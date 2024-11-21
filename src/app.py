@@ -2,7 +2,7 @@
 import os
 from flask import Flask, request, jsonify
 from utils import pdf_to_text
-
+from engine import invoke_rag
 
 app = Flask(__name__)
 
@@ -18,6 +18,10 @@ def allowed_file(filename):
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    text_input = request.form.get('query')
+    if not text_input:
+        return jsonify({'error': 'query input is required'}), 400
+
     print(request.files)
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
@@ -29,25 +33,18 @@ def upload_file():
 
     if file and allowed_file(file.filename):
         filename = file.filename
-
-        #-------------------------------------------------------------------
         # Save the file to the uploads folder
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
 
-        #--------------------------------------------------------------------
-
-        #file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        #file.save(file_path)
         try:
-            extracted_text = pdf_to_text(filepath)
+            rag_response = invoke_rag(query=text_input,document=filepath)
+            return jsonify({"Answer": rag_response}), 200
 
         except RuntimeError as e:
-            return jsonify({"error": str(e)}), 500
-
-    return jsonify({"extracted_text": extracted_text})
-
+            print(e)
+            return jsonify({"error": "Internal Server error"}), 500
 
 # Run the app
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)

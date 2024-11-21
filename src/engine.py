@@ -4,7 +4,10 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_experimental.text_splitter import SemanticChunker
 from utils import pdf_to_text
 import string
-
+from langchain_community.vectorstores import FAISS
+from langchain.embeddings import SentenceTransformerEmbeddings
+from langchain_ollama.llms import OllamaLLM
+from langchain.chains import RetrievalQA
 
 embed_model = HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5")
 
@@ -16,9 +19,26 @@ def perform_semantic_chunking(doc_path):
     # embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
     semantic_chunker = SemanticChunker(embed_model, breakpoint_threshold_type="percentile")
     chunks = semantic_chunker.create_documents([extracted_text])
-    #todo: convert chunks to embeddings using langchain huggingface embeddings, store the vector embeddings to faiss DB
     return chunks
 
+def create_embeddings_vectors(chunks, query):
+    ollama_model_name = "llama3.2:1b"
+    embeddings = SentenceTransformerEmbeddings(model_name='all-mpnet-base-v2')
+    vector_store = FAISS.from_texts(chunks, embeddings)
+
+    llm = OllamaLLM(model=ollama_model_name)
+    rag_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",
+        retriever=vector_store.as_retriever()
+    )
+
+    response = rag_chain.run(query)
+    #source_documents = rag_chain.retriever.get_relevant_documents(query)
+    print("Query:", query)
+    #print("Source Document: ", source_documents)
+    print("Generated Response:", response)
+    return response
 
 
 def text_cleaning(text):
@@ -36,10 +56,15 @@ def text_cleaning(text):
     #cleaned_text = ' '.join(replaced_unicode.split())
     return replaced_newlines
 
+def invoke_rag(query, document):
+    chunks_text = perform_semantic_chunking(document)
+    return create_embeddings_vectors(chunks_text, query)
 
 
-if __name__ == '__main__':
-    chunks_text = perform_semantic_chunking(r"C:\Users\Saikrishna\Downloads\MalwareDetection.pdf")
-    print(type(chunks_text))
-    for i in chunks_text:
-        print(i)
+# if __name__ == '__main__':
+#     chunks_text = perform_semantic_chunking(r"C:\Users\Saikrishna\Downloads\MalwareDetection.pdf")
+#     # print(type(chunks_text))
+#     # for i in chunks_text:
+#     #     print(i)
+#     query = "how is malware detected and handeled"
+#     create_embeddings_vectors(chunks_text, query)
